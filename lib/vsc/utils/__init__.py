@@ -28,3 +28,6 @@ This package contains some utilitie modules use alltrought the vsc packages.
 
 @author: Jens Timmerman (Ghent University)
 """
+import pkg_resources
+
+pkg_resources.declare_namespace(__name__)
