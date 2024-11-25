@@ -1,5 +1,5 @@
 #
-# Copyright 2012-2022 Ghent University
+# Copyright 2012-2024 Ghent University
 #
 # This file is part of vsc-base,
 # originally created by the HPC team of Ghent University (http://ugent.be/hpc/en),
@@ -51,7 +51,7 @@ class AsyncProcessTest(TestCase):
         """ setup a basic shell """
         self.shell = Popen('sh', stdin=p.PIPE, stdout=p.PIPE, shell=True, executable='/bin/bash')
         self.cwd = os.getcwd()
-        super(AsyncProcessTest, self).setUp()
+        super().setUp()
 
     def runTest(self):
         """ try echoing some text and see if it comes back out """

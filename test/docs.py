@@ -1,5 +1,5 @@
 #
-# Copyright 2015-2022 Ghent University
+# Copyright 2015-2024 Ghent University
 #
 # This file is part of vsc-base,
 # originally created by the HPC team of Ghent University (http://ugent.be/hpc/en),
@@ -56,7 +56,6 @@ class DocsTest(TestCase):
             '=' * len(t),
             '',
         ]
-
         self.assertEqual(table, check)
 
 def suite():

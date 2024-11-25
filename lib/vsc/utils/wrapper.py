@@ -6,8 +6,6 @@ with attribution required
 Original code by http://stackoverflow.com/users/416467/kindall from answer 4 of
 http://stackoverflow.com/questions/9057669/how-can-i-intercept-calls-to-pythons-magic-methods-in-new-style-classes
 """
-from future.utils import with_metaclass
-
 
 class WrapperMetaclass(type):
     def __init__(cls, name, bases, dct):
@@ -19,14 +17,14 @@ class WrapperMetaclass(type):
 
         type.__init__(cls, name, bases, dct)
         if cls.__wraps__:
-            ignore = set("__%s__" % n for n in cls.__ignore__.split())
+            ignore = {f"__{n}__" for n in cls.__ignore__.split()}
             for name in dir(cls.__wraps__):
                 if name.startswith("__"):
                     if name not in ignore and name not in dct:
                         setattr(cls, name, property(make_proxy(name)))
 
 
-class Wrapper(with_metaclass(WrapperMetaclass, object)):
+class Wrapper(metaclass=WrapperMetaclass):
     """Wrapper class that provides proxy access to an instance of some
        internal instance."""
 
@@ -39,7 +37,7 @@ class Wrapper(with_metaclass(WrapperMetaclass, object)):
         elif isinstance(obj, self.__wraps__):
             self._obj = obj
         else:
-            raise ValueError("wrapped object must be of %s" % self.__wraps__)
+            raise ValueError(f"wrapped object must be of {self.__wraps__}")
 
     # provide proxy access to regular attributes of wrapped object
     def __getattr__(self, name):

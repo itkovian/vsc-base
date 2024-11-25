@@ -1,6 +1,5 @@
-# -*- coding: utf-8 -*-
 #
-# Copyright 2014-2022 Ghent University
+# Copyright 2014-2024 Ghent University
 #
 # This file is part of vsc-base,
 # originally created by the HPC team of Ghent University (http://ugent.be/hpc/en),
@@ -132,5 +131,5 @@ class TestVscMail(TestCase):
             "test@noreply.com",
             "test@noreply.com",
             "subject",
-            u" Καλημέρα κόσμε, コンニチハ",
+            " Καλημέρα κόσμε, コンニチハ",
         )

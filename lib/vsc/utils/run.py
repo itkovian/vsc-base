@@ -1,5 +1,5 @@
 #
-# Copyright 2009-2022 Ghent University
+# Copyright 2009-2024 Ghent University
 #
 # This file is part of vsc-base,
 # originally created by the HPC team of Ghent University (http://ugent.be/hpc/en),
@@ -74,7 +74,7 @@ import sys
 import time
 
 from vsc.utils.fancylogger import getLogger
-from vsc.utils.py2vs3 import ensure_ascii_string, is_py3, is_string
+from vsc.utils.missing import ensure_ascii_string
 
 PROCESS_MODULE_ASYNCPROCESS_PATH = 'vsc.utils.asyncprocess'
 PROCESS_MODULE_SUBPROCESS_PATH = 'subprocess'
@@ -96,7 +96,7 @@ class CmdList(list):
 
         :param cmd: actual command to run (first item in list)
         """
-        super(CmdList, self).__init__()
+        super().__init__()
         self.add(args, **kwargs)
 
     def add(self, items, tmpl_vals=None, allow_spaces=True):
@@ -113,13 +113,13 @@ class CmdList(list):
             if tmpl_vals:
                 item = item % tmpl_vals
 
-            if not is_string(item):
-                raise ValueError("Non-string item %s (type %s) being added to command %s" % (item, type(item), self))
+            if not isinstance(item, str):
+                raise ValueError(f"Non-string item {item} (type {type(item)}) being added to command {self}")
 
             if not allow_spaces and ' ' in item:
-                raise ValueError("Found one or more spaces in item '%s' being added to command %s" % (item, self))
+                raise ValueError(f"Found one or more spaces in item '{item}' being added to command {self}")
 
-            super(CmdList, self).append(item)
+            super().append(item)
 
     def append(self, *args, **kwargs):
         raise NotImplementedError("Use add rather than append")
@@ -128,14 +128,14 @@ class CmdList(list):
         raise NotImplementedError("Use add rather than extend")
 
 
-class DummyFunction(object):
+class DummyFunction:
     def __getattr__(self, name):
         def dummy(*args, **kwargs):  # pylint: disable=unused-argument
             pass
         return dummy
 
 
-class Run(object):
+class Run:
     """Base class for static run method"""
     INIT_INPUT_CLOSE = True
     USE_SHELL = True
@@ -160,12 +160,14 @@ class Run(object):
             @param use_shell: use the subshell
             @param shell: change the shell
             @param env: environment settings to pass on
+            @param post_exitcode: log errors on non zero exitcode (debug otherwise)
         """
         self.input = kwargs.pop('input', None)
         self.startpath = kwargs.pop('startpath', None)
         self.use_shell = kwargs.pop('use_shell', self.USE_SHELL)
         self.shell = kwargs.pop('shell', self.SHELL)
         self.env = kwargs.pop('env', None)
+        self.post_exitcode = kwargs.pop('post_exitcode', True)
 
         if kwargs.pop('disable_log', None):
             self.log = DummyFunction()  # No logging
@@ -189,7 +191,7 @@ class Run(object):
 
         self._post_exitcode_log_failure = self.log.error
 
-        super(Run, self).__init__(**kwargs)
+        super().__init__(**kwargs)
 
     def _get_log_name(self):
         """Set the log name"""
@@ -299,14 +301,20 @@ class Run(object):
                 try:
                     self._cwd_before_startpath = os.getcwd()  # store it some one can return to it
                     os.chdir(self.startpath)
-                except OSError:
-                    self.log.raiseException("_start_in_path: failed to change path from %s to startpath %s" %
-                                        (self._cwd_before_startpath, self.startpath))
+                except OSError as exc:
+                    msg = (
+                        f"_start_in_path: failed to change path from {self._cwd_before_startpath} "
+                        f"to startpath {self.startpath}")
+                    self.log.exception(msg)
+                    raise OSError(msg) from exc
             else:
-                self.log.raiseException("_start_in_path: provided startpath %s exists but is no directory" %
-                                        self.startpath)
+                msg = f"_start_in_path: provided startpath {self.startpath} exists but is no directory"
+                self.log.error(msg)
+                raise ValueError(msg)
         else:
-            self.log.raiseException("_start_in_path: startpath %s does not exist" % self.startpath)
+            msg = f"_start_in_path: startpath {self.startpath} does not exist"
+            self.log.error(msg)
+            raise ValueError(msg)
 
     def _return_to_previous_start_in_path(self):
         """Change to original path before the change to startpath"""
@@ -322,15 +330,22 @@ class Run(object):
                         self.log.warning(("_return_to_previous_start_in_path: current diretory %s does not match "
                                           "startpath %s"), currentpath, self.startpath)
                     os.chdir(self._cwd_before_startpath)
-                except OSError:
-                    self.log.raiseException(("_return_to_previous_start_in_path: failed to change path from current %s "
-                                             "to previous path %s"), currentpath, self._cwd_before_startpath)
+                except OSError as exc:
+                    msg = (
+                        f"_return_to_previous_start_in_path: failed to change path from current {currentpath} "
+                        f"to previous path {self._cwd_before_startpath}")
+                    self.log.exception(msg)
+                    raise OSError(msg) from exc
             else:
-                self.log.raiseException(("_return_to_previous_start_in_path: provided previous cwd path %s exists "
-                                         "but is no directory") % self._cwd_before_startpath)
+                msg = (
+                    f"_return_to_previous_start_in_path: provided previous cwd path {self._cwd_before_startpath} "
+                    "exists but is not a directory.")
+                self.log.error(msg)
+                raise ValueError(msg)
         else:
-            self.log.raiseException("_return_to_previous_start_in_path: previous cwd path %s does not exist" %
-                                    self._cwd_before_startpath)
+            msg = f"_return_to_previous_start_in_path: previous cwd path {self._cwd_before_startpath} does not exist"
+            self.log.error(msg)
+            raise ValueError(msg)
 
     def _make_popen_named_args(self, others=None):
         """Create the named args for Popen"""
@@ -351,18 +366,17 @@ class Run(object):
 
     def _make_shell_command(self):
         """Convert cmd into shell command"""
-        self.log.warning(("using potentialy unsafe shell commands, use run.run or run.RunNoShell.run "
-                          "instead of run.run_simple or run.Run.run"))
+        self.log.warning("using potentialy unsafe shell commands, use run.run or run.RunNoShell.run "
+                          "instead of run.run_simple or run.Run.run")
         if self.cmd is None:
             self.log.raiseException("_make_shell_command: no cmd set.")
 
-        if is_string(self.cmd):
+        if isinstance(self.cmd, str):
             self._shellcmd = self.cmd
         elif isinstance(self.cmd, (list, tuple,)):
-            self._shellcmd = " ".join([str(arg).replace(' ', '\ ') for arg in self.cmd])
+            self._shellcmd = " ".join([str(arg).replace(' ', r'\ ') for arg in self.cmd])
         else:
-            self.log.raiseException("Failed to convert cmd %s (type %s) into shell command" %
-                                    (self.cmd, type(self.cmd)))
+            self.log.raiseException(f"Failed to convert cmd {self.cmd} (type {type(self.cmd)}) into shell command")
 
     def _init_process(self):
         """Initialise the self._process"""
@@ -375,15 +389,15 @@ class Run(object):
     def _init_input(self):
         """Handle input, if any in a simple way"""
         if self.input is not None:  # allow empty string (whatever it may mean)
-            # in Python 3, stdin.write requires a bytestring
-            if is_py3() and is_string(self.input):
+            # stdin.write requires a bytestring
+            if isinstance(self.input, str):
                 inp = bytes(self.input, encoding='utf-8')
             else:
                 inp = self.input
             try:
                 self._process.stdin.write(inp)
             except Exception:
-                self.log.raiseException("_init_input: Failed write input %s to process" % self.input)
+                self.log.raiseException(f"_init_input: Failed write input {self.input} to process")
 
         if self.INIT_INPUT_CLOSE:
             self._process.stdin.close()
@@ -398,9 +412,12 @@ class Run(object):
         try:
             self._process_exitcode = self._process.wait()
             self._process_output = self._read_process(-1)  # -1 is read all
-        except Exception:
-            self.log.raiseException("_wait_for_process: problem during wait exitcode %s output %s" %
-                                    (self._process_exitcode, self._process_output))
+        except Exception as exc:
+            msg = (
+                f"_wait_for_process: problem during wait exitcode {self._process_exitcode} "
+                f"output {self._process_output}")
+            self.log.exception(msg)
+            raise OSError(msg) from exc
 
     def _cleanup_process(self):
         """Cleanup any leftovers from the process"""
@@ -408,7 +425,7 @@ class Run(object):
             try:
                 self._process.stdout.close()
             except OSError as err:
-                self.log.raiseException("_cleanup_process: failed to close stdout of the process: %s" % err)
+                self.log.raiseException(f"_cleanup_process: failed to close stdout of the process: {err}")
 
     def _read_process(self, readsize=None):
         """Read from process, return out"""
@@ -425,14 +442,19 @@ class Run(object):
         cmd_ascii = ensure_ascii_string(self.cmd)
         if not self._process_exitcode == 0:
             shell_cmd_ascii = ensure_ascii_string(self._shellcmd)
-            self._post_exitcode_log_failure("_post_exitcode: problem occured with cmd %s: (shellcmd %s) output %s",
-                                            cmd_ascii, shell_cmd_ascii, self._process_output)
+            message = (
+                f"_post_exitcode: problem occured with cmd {cmd_ascii}:"
+                f"(shellcmd {shell_cmd_ascii}) output {self._process_output}"
+            )
+            if self.post_exitcode:
+                self._post_exitcode_log_failure(message)
+            else:
+                self.log.debug(message)
         else:
             self.log.debug("_post_exitcode: success cmd %s: output %s", cmd_ascii, self._process_output)
 
     def _post_output(self):
         """Postprocess the output in self._process_output"""
-        pass
 
     def _run_return(self):
         """What to return"""
@@ -512,25 +534,23 @@ class RunNoShell(Run):
         if self.cmd is None:
             self.log.raiseException("_make_shell_command: no cmd set.")
 
-        if is_string(self.cmd):
+        if isinstance(self.cmd, str):
             self._shellcmd = shlex.split(self.cmd)
         elif isinstance(self.cmd, (list, tuple,)):
             self._shellcmd = self.cmd
         else:
-            self.log.raiseException("Failed to convert cmd %s (type %s) into non shell command" %
-                                    (self.cmd, type(self.cmd)))
+            self.log.raiseException(f"Failed to convert cmd {self.cmd} (type {type(self.cmd)}) into non shell command")
 
 
 class RunNoWorries(Run):
     """When the exitcode is >0, log.debug instead of log.error"""
     def __init__(self, cmd, **kwargs):
-        super(RunNoWorries, self).__init__(cmd, **kwargs)
+        super().__init__(cmd, **kwargs)
         self._post_exitcode_log_failure = self.log.debug
 
 
 class RunNoShellNoWorries(RunNoShell, RunNoWorries):
     """When the exitcode is >0, log.debug instead of log.error"""
-    pass
 
 
 class RunLoopException(Exception):
@@ -539,7 +559,7 @@ class RunLoopException(Exception):
         self.output = output
 
     def __str__(self):
-        return "%s code %s output %s" % (self.__class__.__name__, self.code, self.output)
+        return f"{self.__class__.__name__} code {self.code} output {self.output}"
 
 
 class RunLoop(Run):
@@ -551,7 +571,7 @@ class RunLoop(Run):
     LOOP_TIMEOUT_MAIN = 1
 
     def __init__(self, cmd, **kwargs):
-        super(RunLoop, self).__init__(cmd, **kwargs)
+        super().__init__(cmd, **kwargs)
         self._loop_count = None
         self._loop_continue = None  # intial state, change this to break out the loop
 
@@ -600,13 +620,11 @@ class RunLoop(Run):
 
     def _loop_initialise(self):
         """Initialisation before the loop starts"""
-        pass
 
     def _loop_process_output(self, output):
         """Process the output that is read in blocks
             simplest form: do nothing
         """
-        pass
 
     def _loop_process_output_final(self, output):
         """Process the remaining output that is read
@@ -620,7 +638,6 @@ class RunNoShellLoop(RunNoShell, RunLoop):
         need to read from time to time.
         otherwise the stdout/stderr buffer gets filled and it all stops working
     """
-    pass
 
 
 class RunLoopLog(RunLoop):
@@ -629,14 +646,14 @@ class RunLoopLog(RunLoop):
     def _wait_for_process(self):
         # initialise the info logger
         self.log.info("Going to run cmd %s", self._shellcmd)
-        super(RunLoopLog, self)._wait_for_process()
+        super()._wait_for_process()
 
     def _loop_process_output(self, output):
         """Process the output that is read in blocks
             send it to the logger. The logger need to be stream-like
         """
         self.log.streamLog(self.LOOP_LOG_LEVEL, output)
-        super(RunLoopLog, self)._loop_process_output(output)
+        super()._loop_process_output(output)
 
 
 class RunNoShellLoopLog(RunNoShell, RunLoopLog):
@@ -651,7 +668,7 @@ class RunLoopStdout(RunLoop):
         """
         sys.stdout.write(output)
         sys.stdout.flush()
-        super(RunLoopStdout, self)._loop_process_output(output)
+        super()._loop_process_output(output)
 
 
 class RunNoShellLoopStdout(RunNoShell, RunLoopStdout):
@@ -667,7 +684,7 @@ class RunAsync(Run):
             modulepath = PROCESS_MODULE_ASYNCPROCESS_PATH
         if extendfromlist is None:
             extendfromlist = ['send_all', 'recv_some']
-        super(RunAsync, self)._prep_module(modulepath=modulepath, extendfromlist=extendfromlist)
+        super()._prep_module(modulepath=modulepath, extendfromlist=extendfromlist)
 
     def _read_process(self, readsize=None):
         """Read from async process, return out"""
@@ -686,7 +703,7 @@ class RunAsync(Run):
                 # non-blocking read (readsize is a maximum to return !
                 out = self._process_module.recv_some(self._process, maxread=readsize)
             return ensure_ascii_string(out)
-        except (IOError, Exception):
+        except (OSError, Exception):
             # recv_some may throw Exception
             self.log.exception("_read_process: read failed")
             return ''
@@ -694,7 +711,6 @@ class RunAsync(Run):
 
 class RunNoShellAsync(RunNoShell, RunAsync):
     """Async process class"""
-    pass
 
 
 class RunFile(Run):
@@ -702,7 +718,7 @@ class RunFile(Run):
     def __init__(self, cmd, **kwargs):
         self.filename = kwargs.pop('filename', None)
         self.filehandle = None
-        super(RunFile, self).__init__(cmd, **kwargs)
+        super().__init__(cmd, **kwargs)
 
     def _make_popen_named_args(self, others=None):
         if others is None:
@@ -710,37 +726,42 @@ class RunFile(Run):
                 if os.path.isfile(self.filename):
                     self.log.warning("_make_popen_named_args: going to overwrite existing file %s", self.filename)
                 elif os.path.isdir(self.filename):
-                    self.log.raiseException(("_make_popen_named_args: writing to filename %s impossible. "
-                                             "Path exists and is a directory.") % self.filename)
+                    msg = (f"_make_popen_named_args: writing to filename {self.filename} impossible. "
+                           "Path exists and is a directory.")
+                    self.log.error(msg)
+                    raise ValueError(msg)
                 else:
-                    self.log.raiseException("_make_popen_named_args: path exists and is not a file or directory %s" %
-                                            self.filename)
+                    msg = f"_make_popen_named_args: path exists and is not a file or directory {self.filename}"
+                    self.log.error(msg)
+                    raise ValueError(msg)
             else:
                 dirname = os.path.dirname(self.filename)
                 if dirname and not os.path.isdir(dirname):
                     try:
                         os.makedirs(dirname)
                     except OSError:
-                        self.log.raiseException(("_make_popen_named_args: dirname %s for file %s does not exists. "
-                                                 "Creating it failed.") % (dirname, self.filename))
+                        msg = (f"_make_popen_named_args: dirname {dirname} for file {self.filename} "
+                               f"does not exists. Creating it failed.")
+                        self.log.exception(msg)
+                        raise OSError(msg) from OSError
 
             try:
-                self.filehandle = open(self.filename, 'w')
+                self.filehandle = open(self.filename, 'w', encoding='utf8') # pylint: disable=consider-using-with
             except OSError:
-                self.log.raiseException("_make_popen_named_args: failed to open filehandle for file %s" % self.filename)
+                self.log.raiseException(f"_make_popen_named_args: failed to open filehandle for file {self.filename}")
 
             others = {
                       'stdout': self.filehandle,
                       }
 
-        super(RunFile, self)._make_popen_named_args(others=others)
+        super()._make_popen_named_args(others=others)
 
     def _cleanup_process(self):
         """Close the filehandle"""
         try:
             self.filehandle.close()
         except OSError:
-            self.log.raiseException("_cleanup_process: failed to close filehandle for filename %s" % self.filename)
+            self.log.raiseException(f"_cleanup_process: failed to close filehandle for filename {self.filename}")
 
     def _read_process(self, readsize=None):
         """Meaningless for filehandle"""
@@ -749,8 +770,6 @@ class RunFile(Run):
 
 class RunNoShellFile(RunNoShell, RunFile):
     """Popen to filehandle"""
-    pass
-
 
 class RunPty(Run):
     """Pty support (eg for screen sessions)"""
@@ -766,12 +785,11 @@ class RunPty(Run):
                 'stdout': slave,
                 'stderr': slave
                 }
-        super(RunPty, self)._make_popen_named_args(others=others)
+        super()._make_popen_named_args(others=others)
 
 
 class RunNoShellPty(RunNoShell, RunPty):
     """Pty support (eg for screen sessions)"""
-    pass
 
 
 class RunTimeout(RunLoop, RunAsync):
@@ -780,7 +798,7 @@ class RunTimeout(RunLoop, RunAsync):
     def __init__(self, cmd, **kwargs):
         self.timeout = float(kwargs.pop('timeout', None))
         self.start = time.time()
-        super(RunTimeout, self).__init__(cmd, **kwargs)
+        super().__init__(cmd, **kwargs)
 
     def _loop_process_output(self, output):
         """"""
@@ -791,12 +809,11 @@ class RunTimeout(RunLoop, RunAsync):
 
             # go out of loop
             raise RunLoopException(RUNRUN_TIMEOUT_EXITCODE, RUNRUN_TIMEOUT_OUTPUT)
-        super(RunTimeout, self)._loop_process_output(output)
+        super()._loop_process_output(output)
 
 
 class RunNoShellTimeout(RunNoShell, RunTimeout):
     """Run for maximum timeout seconds"""
-    pass
 
 
 class RunQA(RunLoop, RunAsync):
@@ -822,7 +839,7 @@ class RunQA(RunLoop, RunAsync):
         self._loop_previous_ouput_length = None  # track length of output through loop
         self.hit_position = 0
 
-        super(RunQA, self).__init__(cmd, **kwargs)
+        super().__init__(cmd, **kwargs)
 
         self.qa, self.qa_reg, self.no_qa = self._parse_qa(qa, qa_reg, no_qa)
 
@@ -839,15 +856,15 @@ class RunQA(RunLoop, RunAsync):
         """
 
         def escape_special(string):
-            specials = '.*+?(){}[]|\$^'
-            return re.sub(r"([%s])" % ''.join(['\%s' % x for x in specials]), r"\\\1", string)
+            specials = r'.*+?(){}[]|\$^'
+            return re.sub(r"([%s])" % ''.join([rf'\{x}' for x in specials]), r"\\\1", string)
 
-        SPLIT = '[\s\n]+'
+        SPLIT = '[\\s\n]+'
         REG_SPLIT = re.compile(r"" + SPLIT)
 
         def process_answers(answers):
             """Construct list of newline-terminated answers (as strings)."""
-            if is_string(answers):
+            if isinstance(answers, str):
                 answers = [answers]
             elif isinstance(answers, list):
                 # list is manipulated when answering matching question, so take a copy
@@ -957,59 +974,41 @@ class RunQA(RunLoop, RunAsync):
 
             # go out of loop
             raise RunLoopException(RUNRUN_QA_MAX_MISS_EXITCODE, self._process_output)
-        super(RunQA, self)._loop_process_output(output)
+        super()._loop_process_output(output)
 
 
 class RunNoShellQA(RunNoShell, RunQA):
     """Question/Answer processing"""
-    pass
-
 
 class RunAsyncLoop(RunLoop, RunAsync):
     """Async read in loop"""
-    pass
 
 class RunNoShellAsyncLoop(RunNoShellLoop, RunNoShellAsync):
     """Async read in loop"""
-    pass
-
 
 class RunAsyncLoopLog(RunLoopLog, RunAsync):
     """Async read, log to logger"""
-    pass
-
 
 class RunNoShellAsyncLoopLog(RunNoShellLoopLog, RunNoShellAsync):
     """Async read, log to logger"""
-    pass
 
 class RunQALog(RunLoopLog, RunQA):
     """Async loop QA with LoopLog"""
-    pass
-
 
 class RunNoShellQALog(RunNoShellLoopLog, RunNoShellQA):
     """Async loop QA with LoopLog"""
-    pass
-
 
 class RunQAStdout(RunLoopStdout, RunQA):
     """Async loop QA with LoopLogStdout"""
-    pass
-
 
 class RunNoShellQAStdout(RunNoShellLoopStdout, RunNoShellQA):
     """Async loop QA with LoopLogStdout"""
-    pass
-
 
 class RunAsyncLoopStdout(RunLoopStdout, RunAsync):
     """Async read, flush to stdout"""
-    pass
 
 class RunNoShellAsyncLoopStdout(RunNoShellLoopStdout, RunNoShellAsync):
     """Async read, flush to stdout"""
-    pass
 
 
 # convenient names

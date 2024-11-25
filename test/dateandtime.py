@@ -1,5 +1,5 @@
 #
-# Copyright 2012-2022 Ghent University
+# Copyright 2012-2024 Ghent University
 #
 # This file is part of vsc-base,
 # originally created by the HPC team of Ghent University (http://ugent.be/hpc/en),
@@ -28,10 +28,8 @@ Python module for handling data and time strings.
 
 @author: Stijn De Weirdt (Ghent University)
 """
-from __future__ import print_function
 
 import datetime
-import os
 from vsc.install.testing import TestCase
 from vsc.utils.dateandtime import FancyMonth, date_parser, datetime_parser
 

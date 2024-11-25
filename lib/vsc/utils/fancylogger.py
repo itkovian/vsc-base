@@ -1,5 +1,5 @@
 #
-# Copyright 2011-2022 Ghent University
+# Copyright 2011-2024 Ghent University
 #
 # This file is part of vsc-base,
 # originally created by the HPC team of Ghent University (http://ugent.be/hpc/en),
@@ -31,7 +31,6 @@ It adds:
  - custom specifier for always showing the calling function's name
  - rotating file handler
  - a default formatter.
- - logging to an UDP server (vsc.logging.logdaemon.py f.ex.)
  - easily setting loglevel
  - easily add extra specifiers in the log record
  - internal debugging through environment variables
@@ -74,10 +73,6 @@ Logging to a udp server:
 @author: Stijn De Weirdt (Ghent University)
 @author: Kenneth Hoste (Ghent University)
 """
-from __future__ import print_function
-
-from collections import namedtuple
-from future.utils import raise_with_traceback
 import inspect
 import logging
 import logging.handlers
@@ -87,8 +82,6 @@ import threading
 import traceback
 import weakref
 from distutils.version import LooseVersion
-
-from vsc.utils.py2vs3 import is_py2, is_string
 
 
 def _env_to_boolean(varname, default=False):
@@ -157,13 +150,6 @@ def _env_to_boolean(varname, default=False):
 OPTIMIZED_ANSWER = "not available in optimized mode"
 
 HAVE_COLOREDLOGS_MODULE = False
-if not _env_to_boolean('FANCYLOGGER_NO_COLOREDLOGS'):
-    try:
-        import coloredlogs
-        import humanfriendly
-        HAVE_COLOREDLOGS_MODULE = True
-    except ImportError:
-        pass
 
 # constants
 TEST_LOGGING_FORMAT = '%(levelname)-10s %(name)-15s %(threadName)-10s  %(message)s'
@@ -185,10 +171,6 @@ BACKUPCOUNT = 10  # number of rotating log files to save
 
 DEFAULT_UDP_PORT = 5005
 
-# poor man's enum
-Colorize = namedtuple('Colorize', 'AUTO ALWAYS NEVER')('auto', 'always', 'never')
-
-
 APOCALYPTIC = 'APOCALYPTIC'
 logging.addLevelName(logging.CRITICAL * 2 + 1, APOCALYPTIC)
 
@@ -199,15 +181,12 @@ LOG_LEVEL_ALIASES = {
     'QUIET': logging.WARNING,
 }
 
-if is_py2():
-    levelnames = logging._levelNames
-else:
-    # logging._levelNames no longer exists in Python 3
-    # logging.addLevelName is not a real replacement (it overwrites existing level names)
-    levelnames = logging._nameToLevel
+# logging._levelNames no longer exists in Python 3
+# logging.addLevelName is not a real replacement (it overwrites existing level names)
+levelnames = logging._nameToLevel
 
-for key in LOG_LEVEL_ALIASES:
-    levelnames[key] = LOG_LEVEL_ALIASES[key]
+for key, name in LOG_LEVEL_ALIASES.items():
+    levelnames[key] = name
 
 
 # mpi rank support
@@ -231,12 +210,12 @@ class MissingLevelName(KeyError):
 
 def getLevelInt(level_name):
     """Given a level name, return the int value"""
-    if not is_string(level_name):
-        raise TypeError('Provided name %s is not a string (type %s)' % (level_name, type(level_name)))
+    if not isinstance(level_name, str):
+        raise TypeError(f'Provided name {level_name} is not a string (type {type(level_name)})')
 
     level = logging.getLevelName(level_name)
     if not isinstance(level, int):
-        raise MissingLevelName('Unknown loglevel name %s' % level_name)
+        raise MissingLevelName(f'Unknown loglevel name {level_name}')
 
     return level
 
@@ -336,14 +315,18 @@ class FancyLogger(logging.getLoggerClass()):
                 # extend the message with the traceback and some more details
                 # or use self.exception() instead of self.warning()?
                 tb_text = "\n".join(traceback.format_tb(tb))
-                message += " (%s)" % detail
-                fullmessage += " (%s\n%s)" % (detail, tb_text)
+                message += f" ({detail})"
+                fullmessage += f" ({detail}\n{tb_text})"
 
         if exception is None:
             exception = self.RAISE_EXCEPTION_CLASS
 
         self.RAISE_EXCEPTION_LOG_METHOD(fullmessage)
-        raise_with_traceback(exception(message))
+
+        exception = exception(message)
+        if tb is not None:
+            exception = exception.with_traceback(tb)
+        raise exception
 
     # pylint: disable=unused-argument
     def deprecated(self, msg, cur_ver, max_ver, depth=2, exception=None, log_callback=None, *args, **kwargs):
@@ -362,9 +345,9 @@ class FancyLogger(logging.getLoggerClass()):
         loose_mv.version = loose_mv.version[:depth]
 
         if loose_cv >= loose_mv:
-            self.raiseException("DEPRECATED (since v%s) functionality used: %s" % (max_ver, msg), exception=exception)
+            self.raiseException(f"DEPRECATED (since v{max_ver}) functionality used: {msg}", exception=exception)
         else:
-            deprecation_msg = "Deprecated functionality, will no longer work in v%s: %s" % (max_ver, msg)
+            deprecation_msg = f"Deprecated functionality, will no longer work in v{max_ver}: {msg}"
             log_callback(deprecation_msg)
 
     def _handleFunction(self, function, levelno, **kwargs):
@@ -392,7 +375,7 @@ class FancyLogger(logging.getLoggerClass()):
         """
         Add (continuous) data to an existing message stream (eg a stream after a logging.info()
         """
-        if is_string(levelno):
+        if isinstance(levelno, str):
             levelno = getLevelInt(levelno)
 
         def write_and_flush_stream(hdlr, data=None):
@@ -439,7 +422,7 @@ class FancyLogger(logging.getLoggerClass()):
     def get_parent_info(self, prefix, verbose=True):
         """Return pretty text version"""
         rev_parent_info = self._get_parent_info(verbose=verbose)
-        return ["%s %s%s" % (prefix, " " * 4 * idx, info) for idx, info in enumerate(rev_parent_info)]
+        return [f"{prefix} {' ' * 4 * idx}{info}" for idx, info in enumerate(rev_parent_info)]
 
     def __copy__(self):
         """Return shallow copy, in this case reference to current logger"""
@@ -454,7 +437,7 @@ def thread_name():
     """
     returns the current threads name
     """
-    return threading.currentThread().getName()
+    return threading.current_thread().name
 
 
 def getLogger(name=None, fname=False, clsname=False, fancyrecord=None):
@@ -495,8 +478,8 @@ def getLogger(name=None, fname=False, clsname=False, fancyrecord=None):
     l.fancyrecord = fancyrecord
     if _env_to_boolean('FANCYLOGGER_GETLOGGER_DEBUG'):
         print('FANCYLOGGER_GETLOGGER_DEBUG')
-        print('name %s fname %s fullname %s' % (name, fname, fullname))
-        print("getRootLoggerName: %s" % getRootLoggerName())
+        print(f'name {name} fname {fname} fullname {fullname}')
+        print(f"getRootLoggerName: {getRootLoggerName()}")
         if hasattr(l, 'get_parent_info'):
             print('parent_info verbose')
             print("\n".join(l.get_parent_info("FANCYLOGGER_GETLOGGER_DEBUG")))
@@ -546,7 +529,7 @@ def getRootLoggerName():
         return OPTIMIZED_ANSWER
 
 
-def logToScreen(enable=True, handler=None, name=None, stdout=False, colorize=Colorize.NEVER):
+def logToScreen(enable=True, handler=None, name=None, stdout=False, colorize=None):
     """
     enable (or disable) logging to screen
     returns the screenhandler (this can be used to later disable logging to screen)
@@ -559,17 +542,17 @@ def logToScreen(enable=True, handler=None, name=None, stdout=False, colorize=Col
     by default, logToScreen will log to stderr; logging to stdout instead can be done
     by setting the 'stdout' parameter to True
 
-    The `colorize` parameter enables or disables log colorization using
-    ANSI terminal escape sequences, according to the values allowed
-    in the `colorize` parameter to function `_screenLogFormatterFactory`
-    (which see).
+    The `colorize` is deprecated and does nothing.
     """
     handleropts = {'stdout': stdout}
-    formatter = _screenLogFormatterFactory(colorize=colorize, stream=(sys.stdout if stdout else sys.stderr))
+    if colorize is not None:
+        logging.warning("Deprecated option colorize used. ignored.")
+
+    formatter = _screenLogFormatterFactory(colorize=None, stream=None)
 
     return _logToSomething(FancyStreamHandler,
                            handleropts,
-                           loggeroption='logtoscreen_stdout_%s' % str(stdout),
+                           loggeroption=f'logtoscreen_stdout_{str(stdout)}',
                            name=name,
                            enable=enable,
                            handler=handler,
@@ -601,13 +584,13 @@ def logToFile(filename, enable=True, filehandler=None, name=None, max_bytes=MAX_
         try:
             os.makedirs(directory)
         except Exception as ex:
-            exc, detail, _ = sys.exc_info()
-            raise_with_traceback(exc("Cannot create logdirectory %s: %s \n detail: %s" % (directory, ex, detail)))
+            exc, detail, tb = sys.exc_info()
+            raise(exc(f"Cannot create logdirectory {directory}: {ex} \n detail: {detail}")).with_traceback(tb)
 
     return _logToSomething(
         logging.handlers.RotatingFileHandler,
         handleropts,
-        loggeroption='logtofile_%s' % filename,
+        loggeroption=f'logtofile_{filename}',
         name=name,
         enable=enable,
         handler=filehandler,
@@ -627,7 +610,7 @@ def logToUDP(hostname, port=5005, enable=True, datagramhandler=None, name=None):
     handleropts = {'hostname': hostname, 'port': port}
     return _logToSomething(logging.handlers.DatagramHandler,
                            handleropts,
-                           loggeroption='logtoudp_%s:%s' % (hostname, str(port)),
+                           loggeroption=f'logtoudp_{hostname}:{str(port)}',
                            name=name,
                            enable=enable,
                            handler=datagramhandler,
@@ -693,34 +676,14 @@ def _logToSomething(handlerclass, handleropts, loggeroption,
     return handler
 
 
-def _screenLogFormatterFactory(colorize=Colorize.NEVER, stream=sys.stdout):
+def _screenLogFormatterFactory(colorize=None, stream=None):
     """
-    Return a log formatter class, with optional colorization features.
-
-    Second argument `colorize` controls whether the formatter
-    can use ANSI terminal escape sequences:
-
-    * ``Colorize.NEVER`` (default) forces use the plain `logging.Formatter` class;
-    * ``Colorize.ALWAYS`` forces use of the colorizing formatter;
-    * ``Colorize.AUTO`` selects the colorizing formatter depending on
-      whether `stream` is connected to a terminal.
-
-    Second argument `stream` is the stream to check in case `colorize`
-    is ``Colorize.AUTO``.
+    Return a log formatter class.
     """
-    formatter = logging.Formatter  # default
-    if HAVE_COLOREDLOGS_MODULE:
-        if colorize == Colorize.AUTO:
-            # auto-detect
-            if humanfriendly.terminal.terminal_supports_colors(stream):
-                formatter = coloredlogs.ColoredFormatter
-        elif colorize == Colorize.ALWAYS:
-            formatter = coloredlogs.ColoredFormatter
-        elif colorize == Colorize.NEVER:
-            pass
-        else:
-            raise ValueError("Argument `colorize` must be one of 'auto', 'always', or 'never'.")
-    return formatter
+    if colorize is not None:
+        logging.debug("stream %s given.", type(stream))
+        logging.warning("Deprecated option colorize used. ignored.")
+    return logging.Formatter
 
 
 def _getSysLogFacility(name=None):
@@ -738,7 +701,7 @@ def _getSysLogFacility(name=None):
         name = 'user'
 
     facility = getattr(logging.handlers.SysLogHandler,
-                       "LOG_%s" % name.upper(), logging.handlers.SysLogHandler.LOG_USER)
+                       f"LOG_{name.upper()}", logging.handlers.SysLogHandler.LOG_USER)
 
     return facility
 
@@ -759,7 +722,7 @@ def setLogLevel(level):
     """
     Set a global log level for all FancyLoggers
     """
-    if is_string(level):
+    if isinstance(level, str):
         level = getLevelInt(level)
     logger = getLogger(fname=False, clsname=False)
     logger.setLevel(level)

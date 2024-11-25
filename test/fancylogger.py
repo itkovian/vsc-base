@@ -1,6 +1,5 @@
-# -*- coding: utf-8 -*-
 #
-# Copyright 2013-2022 Ghent University
+# Copyright 2013-2024 Ghent University
 #
 # This file is part of vsc-base,
 # originally created by the HPC team of Ghent University (http://ugent.be/hpc/en),
@@ -30,33 +29,18 @@ Unit tests for fancylogger.
 @author: Kenneth Hoste (Ghent University)
 @author: Stijn De Weirdt (Ghent University)
 """
-from __future__ import print_function
-
-import coloredlogs
 import logging
 import os
 import re
 import sys
 import shutil
 import tempfile
+from io import StringIO
 from random import randint
 from unittest import TestLoader, main, TestSuite
 
-try:
-    from unittest import skipUnless
-except (AttributeError, ImportError):
-    # Python 2.6 does not have `skipIf`/`skipUnless`
-    def skipUnless(condition, reason):
-        if condition:
-            def deco(fn):
-                return fn
-        else:
-            def deco(fn):
-                return (lambda *args, **kwargs: True)
-        return deco
-
+from unittest import skipUnless
 from vsc.utils import fancylogger
-from vsc.utils.py2vs3 import StringIO, is_py_ver, is_py3, is_string
 from vsc.install.testing import TestCase
 
 MSG = "This is a test log message."
@@ -101,7 +85,7 @@ def _get_tty_stream():
                 stream = open(tty, 'w')
                 if os.isatty(stream.fileno()):
                     return stream
-            except IOError:
+            except OSError:
                 # cannot open $TTY for writing, continue
                 pass
         # give up
@@ -110,7 +94,7 @@ def _get_tty_stream():
 
 def classless_function():
     logger = fancylogger.getLogger(fname=True, clsname=True)
-    logger.warn("from classless_function")
+    logger.warning("from classless_function")
 
 
 class FancyLoggerLogToFileTest(TestCase):
@@ -152,16 +136,16 @@ class FancyLoggerTest(TestCase):
         f.close()
 
     def mk_empty_log(self):
-        f = open(self.logfn, 'w')
-        f.write('')
-        f.close()
+        with open(self.logfn, 'w') as fih:
+            fih.write('')
 
     def read_log(self):
         self.handler.flush()
-        return open(self.logfn, 'r').read()
+        with open(self.logfn) as fih:
+            return fih.read()
 
     def setUp(self):
-        super(FancyLoggerTest, self).setUp()
+        super().setUp()
 
         self._reset_fancylogger()
 
@@ -224,19 +208,10 @@ class FancyLoggerTest(TestCase):
         pi_l1 = log_l1._get_parent_info()
         self.assertEqual(len(pi_l1), 3)
 
-        is_py27 = is_py_ver(2,7)
-
-        if is_py27:
-            log_l2a = log_l1.getChild('level2a')
-            pi_l2a = log_l2a._get_parent_info()
-            self.assertEqual(len(pi_l2a), 4)
-
         # this should be identical to getChild
         log_l2b = fancylogger.getLogger('level1.level2b', fname=False)
         # fname=False is required to have the name similar
         # cutoff last letter (a vs b)
-        if is_py27:
-            self.assertEqual(log_l2a.name[:-1], log_l2b.name[:-1])
         pi_l2b = log_l2b._get_parent_info()
         # yes, this broken on several levels (incl in logging itself)
         # adding '.' in the name does not automatically create the parent/child relations
@@ -258,9 +233,9 @@ class FancyLoggerTest(TestCase):
             "Here are some UTF-8 characters: ß, ©, Ω, £.",  # only UTF8 characters
             "This non-UTF-8 character '\x80' should be handled properly.",  # contains non UTF-8 character
             # unicode strings
-            u"This is a pure ASCII text.",  # pure ASCII
-            u"Here are some UTF8 characters: ß, ©, Ω, £.",  # only UTF8 characters
-            u"This non-UTF8 character '\x80' should be handled properly.",  # contains non UTF-8 character
+            "This is a pure ASCII text.",  # pure ASCII
+            "Here are some UTF8 characters: ß, ©, Ω, £.",  # only UTF8 characters
+            "This non-UTF8 character '\x80' should be handled properly.",  # contains non UTF-8 character
         ]
         for msg in msgs:
             logger.critical(msg)
@@ -270,11 +245,7 @@ class FancyLoggerTest(TestCase):
             logger.fatal(msg)
             logger.info(msg)
             logger.warning(msg)
-            logger.warn(msg)
 
-            # can't use ís_string function here, because we need to discriminate between bytestrings & unicode strings;
-            # in Python 2, the 'bytes' type (a bytestring) is the same as 'str', but not in Python 3;
-            # unicode is a different type in Python 2, but doesn't exist in Python 3;
             if isinstance(msg, str):
                 regex = str(msg)
             else:
@@ -292,7 +263,7 @@ class FancyLoggerTest(TestCase):
         max_ver = "1.0"
 
         # test whether deprecation works
-        msgre_tpl_error = r"DEPRECATED\s*\(since v%s\).*%s" % (max_ver, MSG)
+        msgre_tpl_error = r"DEPRECATED\s*\(since v{}\).*{}".format(max_ver, MSG)
         self.assertErrorRegex(Exception, msgre_tpl_error, logger.deprecated, MSG, "1.1", max_ver)
         self.assertErrorRegex(Exception, msgre_tpl_error, logger.deprecated, MSG, "1.0", max_ver)
 
@@ -303,9 +274,9 @@ class FancyLoggerTest(TestCase):
         # no deprecation if current version is lower than max version
         logger.deprecated(MSG, "0.9", max_ver)
 
-        msgre_warning = re.compile(r"WARNING.*Deprecated.* will no longer work in v%s:.*%s" % (max_ver, MSG))
+        msgre_warning = re.compile(r"WARNING.*Deprecated.* will no longer work in v{}:.*{}".format(max_ver, MSG))
         txt = self.read_log()
-        self.assertTrue(msgre_warning.search(txt), "Pattern '%s' found in: %s" % (msgre_warning.pattern, txt))
+        self.assertTrue(msgre_warning.search(txt), f"Pattern '{msgre_warning.pattern}' found in: {txt}")
 
         self.mk_empty_log()
 
@@ -321,15 +292,10 @@ class FancyLoggerTest(TestCase):
         self.mk_empty_log()
 
         # test handling of non-UTF8 chars
-        msg = MSG + u'\x81'
-        if is_py3():
-            # Python 3: unicode is supported in regular string values (no special unicode type)
-            msgre_tpl_error = r"DEPRECATED\s*\(since v%s\).*\x81" % max_ver
-            msgre_warning = re.compile(r"WARNING.*Deprecated.* will no longer work in v%s:.*\x81" % max_ver)
-        else:
-            # Python 2: extra \xc2 character appears for unicode strings
-            msgre_tpl_error = r"DEPRECATED\s*\(since v%s\).*\xc2\x81" % max_ver
-            msgre_warning = re.compile(r"WARNING.*Deprecated.* will no longer work in v%s:.*\xc2\x81" % max_ver)
+        msg = MSG + '\x81'
+        # Python 3: unicode is supported in regular string values (no special unicode type)
+        msgre_tpl_error = r"DEPRECATED\s*\(since v%s\).*\x81" % max_ver
+        msgre_warning = re.compile(r"WARNING.*Deprecated.* will no longer work in v%s:.*\x81" % max_ver)
 
         self.assertErrorRegex(Exception, msgre_tpl_error, logger.deprecated, msg, "1.1", max_ver)
 
@@ -375,7 +341,7 @@ class FancyLoggerTest(TestCase):
 
         regex = re.compile("^WARNING.*HIT.*failtest\n.*in test123.*$", re.M)
         txt = self.read_log()
-        self.assertTrue(regex.match(txt), "Pattern '%s' matches '%s'" % (regex.pattern, txt))
+        self.assertTrue(regex.match(txt), f"Pattern '{regex.pattern}' matches '{txt}'")
 
         self.truncate_log()
         fancylogger.FancyLogger.RAISE_EXCEPTION_CLASS = KeyError
@@ -384,7 +350,7 @@ class FancyLoggerTest(TestCase):
 
         regex = re.compile("^WARNING.*HIT.*'failkeytest'\n.*in test123.*$", re.M)
         txt = self.read_log()
-        self.assertTrue(regex.match(txt), "Pattern '%s' matches '%s'" % (regex.pattern, txt))
+        self.assertTrue(regex.match(txt), f"Pattern '{regex.pattern}' matches '{txt}'")
 
         self.truncate_log()
         fancylogger.FancyLogger.RAISE_EXCEPTION_LOG_METHOD = lambda c, msg: c.warning(msg)
@@ -393,7 +359,7 @@ class FancyLoggerTest(TestCase):
 
         regex = re.compile("^WARNING.*HIT.*attrtest\n.*in test123.*$", re.M)
         txt = self.read_log()
-        self.assertTrue(regex.match(txt), "Pattern '%s' matches '%s'" % (regex.pattern, txt))
+        self.assertTrue(regex.match(txt), f"Pattern '{regex.pattern}' matches '{txt}'")
 
     def _stream_stdouterr(self, isstdout=True, expect_match=True):
         """Log to stdout or stderror, check stdout or stderror"""
@@ -416,7 +382,7 @@ class FancyLoggerTest(TestCase):
         lh = fancylogger.logToScreen(stdout=isstdout)
         logger = fancylogger.getLogger(name, fname=True, clsname=False)
         # logfn makes it unique
-        msg = 'TEST isstdout %s expect_match %s logfn %s' % (isstdout, expect_match, logfn)
+        msg = f'TEST isstdout {isstdout} expect_match {expect_match} logfn {logfn}'
         logger.info(msg)
 
         # restore
@@ -427,7 +393,7 @@ class FancyLoggerTest(TestCase):
         fh2 = open(logfn)
         txt = fh2.read().strip()
         fh2.close()
-        reg_exp = re.compile(r"INFO\s+\S+.%s.%s\s+\S+\s+%s" % (name, '_stream_stdouterr', msg))
+        reg_exp = re.compile(r"INFO\s+\S+.{}.{}\s+\S+\s+{}".format(name, '_stream_stdouterr', msg))
         match = reg_exp.search(txt) is not None
         self.assertEqual(match, expect_match)
 
@@ -454,7 +420,7 @@ class FancyLoggerTest(TestCase):
         class Foobar:
             def somefunction(self):
                 logger = fancylogger.getLogger(fname=True, clsname=True)
-                logger.warn('we are logging something here')
+                logger.warning('we are logging something here')
 
         stringfile = StringIO()
         sys.stderr = stringfile
@@ -486,7 +452,7 @@ class FancyLoggerTest(TestCase):
         # this will only hold in debug mode, so also disable the test
         if __debug__:
             pattern = 'FancyLoggerTest'
-            self.assertTrue(pattern in txt, "Pattern '%s' found in: %s" % (pattern, txt))
+            self.assertTrue(pattern in txt, f"Pattern '{pattern}' found in: {txt}")
         # restore
         fancylogger.logToScreen(enable=False, handler=handler)
         sys.stderr = _stderr
@@ -503,13 +469,13 @@ class FancyLoggerTest(TestCase):
                             (None, fancylogger.getAllExistingLoggers)]:
             self.assertEqual([name for name, _ in func()],
                              [name for name, _ in fancylogger.getDetailsLogLevels(fancy)],
-                             "Test getDetailsLogLevels fancy %s and function %s" % (fancy, func.__name__))
+                             f"Test getDetailsLogLevels fancy {fancy} and function {func.__name__}")
         self.assertEqual([name for name, _ in fancylogger.getAllFancyloggers()],
                          [name for name, _ in fancylogger.getDetailsLogLevels()],
                          "Test getDetailsLogLevels default fancy True and function getAllFancyloggers")
 
         res = fancylogger.getDetailsLogLevels(fancy=True)
-        self.assertTrue(is_string(res[0][1]), msg='getDetailsLogLevels returns loglevel names by default')
+        self.assertTrue(isinstance(res[0][1], str), msg='getDetailsLogLevels returns loglevel names by default')
         res = fancylogger.getDetailsLogLevels(fancy=True, numeric=True)
         self.assertTrue(isinstance(res[0][1], int), msg='getDetailsLogLevels returns loglevel values with numeric=True')
 
@@ -525,17 +491,17 @@ class FancyLoggerTest(TestCase):
         msg = 'this is my string'
         logging.warning(msg)
         self.assertTrue(msg in stringfile.getvalue(),
-                        msg="'%s' in '%s'" % (msg, stringfile.getvalue()))
+                        msg=f"'{msg}' in '{stringfile.getvalue()}'")
 
         msg = 'there are many like it'
         logging.getLogger().warning(msg)
         self.assertTrue(msg in stringfile.getvalue(),
-                        msg="'%s' in '%s'" % (msg, stringfile.getvalue()))
+                        msg=f"'{msg}' in '{stringfile.getvalue()}'")
 
         msg = 'but this one is mine'
         logging.getLogger('mine').warning(msg)
         self.assertTrue(msg in stringfile.getvalue(),
-                        msg="'%s' in '%s'" % (msg, stringfile.getvalue()))
+                        msg=f"'{msg}' in '{stringfile.getvalue()}'")
 
     # make sure this test runs last, since it may mess up other tests (like test_raiseException)
     def test_zzz_fancylogger_as_rootlogger_logging(self):
@@ -544,7 +510,7 @@ class FancyLoggerTest(TestCase):
         after setting the root logger
         """
 
-        # test logging.root is loggin root logger
+        # test logging.root is logging root logger
         # this is an assumption made to make the fancyrootlogger code work
         orig_root = logging.getLogger()
         self.assertEqual(logging.root, orig_root,
@@ -564,6 +530,7 @@ class FancyLoggerTest(TestCase):
 
         msg = 'this is my string'
         logging.debug(msg)
+
         self.assertEqual(stringfile.getvalue(), '',
                          msg="logging.debug reports nothing when fancylogger loglevel is debug")
 
@@ -653,37 +620,16 @@ class FancyLoggerTest(TestCase):
 
         self._reset_fancylogger()
 
-        super(FancyLoggerTest, self).tearDown()
+        super().tearDown()
 
 
 class ScreenLogFormatterFactoryTest(TestCase):
     """Test `_screenLogFormatterFactory`"""
 
-    def test_colorize_never(self):
-        # with colorize=Colorize.NEVER, return plain old formatter
-        cls = fancylogger._screenLogFormatterFactory(fancylogger.Colorize.NEVER)
-        self.assertEqual(cls, logging.Formatter)
-
     def test_colorize_always(self):
-        # with colorize=Colorize.ALWAYS, return colorizing formatter
-        cls = fancylogger._screenLogFormatterFactory(fancylogger.Colorize.ALWAYS)
-        self.assertEqual(cls, coloredlogs.ColoredFormatter)
-
-    @skipUnless(_get_tty_stream(), "cannot get a stream connected to a TTY")
-    def test_colorize_auto_tty(self):
-        # with colorize=Colorize.AUTO on a stream connected to a TTY,
-        # return colorizing formatter
-        stream = _get_tty_stream()
-        cls = fancylogger._screenLogFormatterFactory(fancylogger.Colorize.AUTO, stream)
-        self.assertEqual(cls, coloredlogs.ColoredFormatter)
-
-    def test_colorize_auto_nontty(self):
-        # with colorize=Colorize.AUTO on a stream *not* connected to a TTY,
-        # return colorizing formatter
-        stream = open(os.devnull, 'w')
-        cls = fancylogger._screenLogFormatterFactory(fancylogger.Colorize.AUTO, stream)
+        # Make sure colorize no longer works and returns a standard logging.Formatter
+        cls = fancylogger._screenLogFormatterFactory("always")
         self.assertEqual(cls, logging.Formatter)
-
 
 class EnvToBooleanTest(TestCase):
 
@@ -694,7 +640,7 @@ class EnvToBooleanTest(TestCase):
     def _generate_var_name(self):
         while True:
             rnd = randint(0, 0xffffff)
-            name = ('TEST_VAR_%06X' % rnd)
+            name = f'TEST_VAR_{rnd:06X}'
             if name not in os.environ:
                 return name
 

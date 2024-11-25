@@ -42,7 +42,7 @@ class Daemon:
                 # exit first parent
                 sys.exit(0)
         except OSError as err:
-            sys.stderr.write("fork #1 failed: %d (%s)\n" % (err.errno, err.strerror))
+            sys.stderr.write(f"fork #1 failed: {int(err.errno)} ({err.strerror})\n")
             sys.exit(1)
 
         # decouple from parent environment
@@ -57,23 +57,24 @@ class Daemon:
                 # exit from second parent
                 sys.exit(0)
         except OSError as err:
-            sys.stderr.write("fork #2 failed: %d (%s)\n" % (err.errno, err.strerror))
+            sys.stderr.write(f"fork #2 failed: {int(err.errno)} ({err.strerror})\n")
             sys.exit(1)
 
         # redirect standard file descriptors
         sys.stdout.flush()
         sys.stderr.flush()
-        si = open(self.stdin, 'r')
-        so = open(self.stdout, 'a+')
-        se = open(self.stderr, 'ba+', 0)
-        os.dup2(si.fileno(), sys.stdin.fileno())
-        os.dup2(so.fileno(), sys.stdout.fileno())
-        os.dup2(se.fileno(), sys.stderr.fileno())
+        with open(self.stdin) as sti:
+            os.dup2(sti.fileno(), sys.stdin.fileno())
+        with open(self.stdout, 'a+') as sto:
+            os.dup2(sto.fileno(), sys.stdout.fileno())
+        with open(self.stderr, 'ba+', 0) as ste:
+            os.dup2(ste.fileno(), sys.stderr.fileno())
 
         # write pidfile
         atexit.register(self.delpid)
         pid = str(os.getpid())
-        open(self.pidfile, 'w+').write("%s\n" % pid)
+        with open(self.pidfile, 'w+') as pidf:
+            pidf.write(f"{pid}\n")
 
     def delpid(self):
         os.remove(self.pidfile)
@@ -84,10 +85,9 @@ class Daemon:
         """
         # Check for a pidfile to see if the daemon already runs
         try:
-            pf = open(self.pidfile, 'r')
-            pid = int(pf.read().strip())
-            pf.close()
-        except IOError:
+            with open(self.pidfile) as pidf:
+                pid = int(pidf.read().strip())
+        except OSError:
             pid = None
 
         if pid:
@@ -105,10 +105,9 @@ class Daemon:
         """
         # Get the pid from the pidfile
         try:
-            pf = open(self.pidfile, 'r')
-            pid = int(pf.read().strip())
-            pf.close()
-        except IOError:
+            with open(self.pidfile) as pidf:
+                pid = int(pidf.read().strip())
+        except OSError:
             pid = None
 
         if not pid:
@@ -142,4 +141,3 @@ class Daemon:
         You should override this method when you subclass Daemon. It will be called after the process has been
         daemonized by start() or restart().
         """
-        pass

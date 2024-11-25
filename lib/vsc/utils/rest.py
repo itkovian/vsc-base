@@ -38,16 +38,15 @@ based on https://github.com/jpaugh/agithub/commit/1e2575825b165c1cb7cbd85c22e256
 import base64
 import copy
 import json
+import logging
 from functools import partial
-from future.utils import iteritems
-
-from vsc.utils import fancylogger
-from vsc.utils.py2vs3 import HTTPSHandler, Request, build_opener, is_py3, is_string, urlencode
+from urllib.parse import urlencode
+from urllib.request import Request, HTTPSHandler, build_opener
 
 CENSORED_MESSAGE = '<actual secret censored>'
 
 
-class Client(object):
+class Client:
     """An implementation of a REST client"""
     DELETE = 'DELETE'
     GET = 'GET'
@@ -68,7 +67,7 @@ class Client(object):
     USER_AGENT = 'vsc-rest-client'
 
     def __init__(self, url, username=None, password=None, token=None, token_type='Token', user_agent=None,
-                 append_slash=False):
+                 append_slash=False, decode=True):
         """
         Create a Client object,
         this client can consume a REST api hosted at host/endpoint
@@ -82,6 +81,7 @@ class Client(object):
         self.username = username
         self.url = url
         self.append_slash = append_slash
+        self.decode = decode
 
         if not user_agent:
             self.user_agent = self.USER_AGENT
@@ -100,7 +100,7 @@ class Client(object):
         if password is not None:
             self.auth_header = self.hash_pass(password, username)
         elif token is not None:
-            self.auth_header = '%s %s' % (token_type, token)
+            self.auth_header = f'{token_type} {token}'
 
     def _append_slash_to(self, url):
         """Append slash to specified URL, if desired and needed."""
@@ -173,35 +173,36 @@ class Client(object):
         secret_items = ['Authorization', 'X-Auth-Token']
         headers_censored = self.censor_request(secret_items, headers)
 
-        if body and not is_string(body):
-            # censor contents of body to avoid leaking passwords
-            secret_items = ['password']
-            body_censored = self.censor_request(secret_items, body)
-            # serialize body in all cases
-            body = json.dumps(body)
-        else:
-            # assume serialized bodies are already clear of secrets
-            fancylogger.getLogger().debug("Request with pre-serialized body, will not censor secrets")
-            body_censored = body
+        body_censored = body
+        if body is not None:
+            if isinstance(body, str):
+                # assume serialized bodies are already clear of secrets
+                logging.debug("Request with pre-serialized body, will not censor secrets")
+            else:
+                # censor contents of body to avoid leaking passwords
+                secret_items = ['password']
+                body_censored = self.censor_request(secret_items, body)
+                # serialize body in all cases
+                body = json.dumps(body)
 
-        fancylogger.getLogger().debug('cli request: %s, %s, %s, %s', method, url, body_censored, headers_censored)
+        logging.debug('cli request: %s, %s, %s, %s', method, url, body_censored, headers_censored)
 
-        # TODO: in recent python: Context manager
-        conn = self.get_connection(method, url, body, headers)
-        status = conn.code
-        if method == self.HEAD:
-            pybody = conn.headers
-        else:
-            body = conn.read()
-            if is_py3():
+        with self.get_connection(method, url, body, headers) as conn:
+            status = conn.code
+            if method == self.HEAD:
+                pybody = conn.headers
+            else:
+                body = conn.read()
                 body = body.decode('utf-8')  # byte encoded response
-            try:
-                pybody = json.loads(body)
-            except ValueError:
-                pybody = body
-        fancylogger.getLogger().debug('reponse len: %s ', len(pybody))
-        conn.close()
-        return status, pybody
+                if self.decode:
+                    try:
+                        pybody = json.loads(body)
+                    except ValueError:
+                        pybody = body
+                else:
+                    pybody = body
+            logging.debug('reponse len: %s ', len(pybody))
+            return status, pybody
 
     @staticmethod
     def censor_request(secrets, payload):
@@ -231,15 +232,10 @@ class Client(object):
         if not username:
             username = self.username
 
-        credentials = '%s:%s' % (username, password)
-        if is_py3():
-            # convert credentials into bytes
-            credentials = credentials.encode('utf-8')
-
+        credentials = f'{username}:{password}'
+        credentials = credentials.encode('utf-8')
         encoded_credentials = base64.b64encode(credentials).strip()
-        if is_py3():
-            # convert back to string
-            encoded_credentials = str(encoded_credentials, 'utf-8')
+        encoded_credentials = str(encoded_credentials, 'utf-8')
 
         return 'Basic ' + encoded_credentials
 
@@ -248,18 +244,18 @@ class Client(object):
             sep = '/'
         else:
             sep = ''
-        if body:
+        if body is not None:
             body = body.encode()
         request = Request(self.url + sep + url, data=body)
-        for header, value in iteritems(headers):
+        for header, value in headers.items():
             request.add_header(header, value)
         request.get_method = lambda: method
-        fancylogger.getLogger().debug('opening request:  %s%s%s', self.url, sep, url)
+        logging.debug('opening request:  %s%s%s', self.url, sep, url)
         connection = self.opener.open(request)
         return connection
 
 
-class RequestBuilder(object):
+class RequestBuilder:
     '''RequestBuilder(client).path.to.resource.method(...)
         stands for
     RequestBuilder(client).client.method('path/to/resource, ...)
@@ -300,13 +296,13 @@ class RequestBuilder(object):
         '''If you ever stringify this, you've (probably) messed up
         somewhere. So let's give a semi-helpful message.
         '''
-        return "I don't know about %s, You probably want to do a get or other http request, use .get()" % self.url
+        return f"I don't know about {self.url}, You probably want to do a get or other http request, use .get()"
 
     def __repr__(self):
-        return '%s: %s' % (self.__class__, self.url)
+        return f'{self.__class__}: {self.url}'
 
 
-class RestClient(object):
+class RestClient:
     """
     A client with a request builder, so you can easily create rest requests
     e.g. to create a github Rest API client just do

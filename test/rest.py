@@ -1,5 +1,5 @@
 #
-# Copyright 2014-2022 Ghent University
+# Copyright 2014-2024 Ghent University
 #
 # This file is part of vsc-base,
 # originally created by the HPC team of Ghent University (http://ugent.be/hpc/en),
@@ -31,9 +31,8 @@ Unit tests for the rest client.
 import os
 
 from vsc.install.testing import TestCase
-from vsc.utils.py2vs3 import HTTPError
 from vsc.utils.rest import Client, RestClient
-
+from urllib.request import HTTPError
 
 # the user who's repo to test
 GITHUB_USER = "hpcugent"
@@ -54,7 +53,7 @@ class RestClientTest(TestCase):
 
     def setUp(self):
         """setup"""
-        super(RestClientTest, self).setUp()
+        super().setUp()
         self.client = RestClient('https://api.github.com', username=GITHUB_LOGIN, token=GITHUB_TOKEN)
 
     def test_client(self):
@@ -66,11 +65,11 @@ class RestClientTest(TestCase):
         status, body = self.client.repos[GITHUB_USER][GITHUB_REPO].contents.a_directory['a_file.txt'].get()
         self.assertEqual(status, 200)
         # dGhpcyBpcyBhIGxpbmUgb2YgdGV4dAo= == 'this is a line of text' in base64 encoding
-        self.assertEqual(body['content'].strip(), u"dGhpcyBpcyBhIGxpbmUgb2YgdGV4dAo=")
+        self.assertEqual(body['content'].strip(), "dGhpcyBpcyBhIGxpbmUgb2YgdGV4dAo=")
 
         status, body = self.client.repos['hpcugent']['easybuild-framework'].pulls[1].get()
         self.assertEqual(status, 200)
-        self.assertEqual(body['merge_commit_sha'], u'fba3e13815f3d2a9dfbd2f89f1cf678dd58bb1f1')
+        self.assertEqual(body['merge_commit_sha'], 'fba3e13815f3d2a9dfbd2f89f1cf678dd58bb1f1')
 
     def test_request_methods(self):
         """Test all request methods"""
@@ -135,3 +134,40 @@ class RestClientTest(TestCase):
         nondict_payload = [payload, 'more_payload']
         payload_censored = client.censor_request(['password'], nondict_payload)
         self.assertEqual(payload_censored, nondict_payload)
+
+
+class RestClientNoDecodeTest(TestCase):
+    """ small test for The RestClient
+    This should not be to much, since there is an hourly limit of requests for the github api
+    """
+
+    def setUp(self):
+        """setup"""
+        super().setUp()
+        self.client = RestClient('https://api.github.com', username=GITHUB_LOGIN, token=GITHUB_TOKEN, decode=False)
+
+    def test_client(self):
+        """Do a test api call"""
+        if GITHUB_TOKEN is None:
+            print("Skipping test_client, since no GitHub token is available")
+            return
+
+        status, body = self.client.repos[GITHUB_USER][GITHUB_REPO].contents.a_directory['a_file.txt'].get()
+        self.assertEqual(status, 200)
+        # dGhpcyBpcyBhIGxpbmUgb2YgdGV4dAo= == 'this is a line of text' in base64 encoding
+        self.assertEqual(body['content'].strip(), "dGhpcyBpcyBhIGxpbmUgb2YgdGV4dAo=")
+
+        status, body = self.client.repos['hpcugent']['easybuild-framework'].pulls[1].get()
+        self.assertEqual(status, 200)
+        self.assertEqual(body['merge_commit_sha'], 'fba3e13815f3d2a9dfbd2f89f1cf678dd58bb1f1')
+
+    def test_get_method(self):
+        """A quick test of a GET to the github API"""
+
+        status, body = self.client.users['hpcugent'].get()
+        self.assertEqual(status, 200)
+        self.assertTrue('"login":"hpcugent"' in body)
+        self.assertTrue('"id":1515263' in body)
+
+
+

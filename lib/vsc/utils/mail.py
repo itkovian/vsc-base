@@ -1,5 +1,5 @@
 #
-# Copyright 2012-2022 Ghent University
+# Copyright 2012-2024 Ghent University
 #
 # This file is part of vsc-base,
 # originally created by the HPC team of Ghent University (http://ugent.be/hpc/en),
@@ -39,7 +39,6 @@ from configparser import ConfigParser
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.image import MIMEImage
-from future.utils import string_types
 
 class VscMailError(Exception):
     """Raised if the sending of an email fails for some reason."""
@@ -66,7 +65,7 @@ class VscMailError(Exception):
         self.err = err
 
 
-class VscMail(object):
+class VscMail:
     """Class providing functionality to send out mail."""
 
     def __init__(
@@ -85,7 +84,7 @@ class VscMail(object):
         mail_options = ConfigParser()
         if mail_config:
             logging.info("Reading config file: %s", mail_config)
-            with open(mail_config, "r") as mc:
+            with open(mail_config) as mc:
                 mail_options.read_file(mc)
 
         # we can have cases where the host part is actually host:port
@@ -199,7 +198,8 @@ class VscMail(object):
         """
 
         # deprecated: single email as string
-        if isinstance(mail_to, string_types):
+        if isinstance(mail_to, str):
+            logging.warning("Deprecated, mail_to passed as string. Should be list of strings.")
             mail_to = [mail_to]
 
         logging.info("Sending mail [%s] to %s.", mail_subject, mail_to)
@@ -238,8 +238,8 @@ class VscMail(object):
         """
 
         for im in images:
-            re_src = re.compile("src=\"%s\"" % im)
-            (html, count) = re_src.subn("src=\"cid:%s\"" % im, html)
+            re_src = re.compile(f"src=\"{im}\"")
+            (html, count) = re_src.subn(f"src=\"cid:{im}\"", html)
             if count == 0:
                 logging.error("Could not find image %s in provided HTML.", im)
                 raise VscMailError("Could not find image")
@@ -286,8 +286,8 @@ class VscMail(object):
         @param bcc: a list of valid BCC email addresses
         """
 
-        # deprecated: single email as string
-        if isinstance(mail_to, string_types):
+        if isinstance(mail_to, str):
+            logging.warning("Deprecated, mail_to passed as string. Should be list of strings.")
             mail_to = [mail_to]
 
         logging.info("Sending mail [%s] to %s.", mail_subject, mail_to)
@@ -337,10 +337,9 @@ class VscMail(object):
 
         if images is not None:
             for im in images:
-                image_fp = open(im, 'r')
-                msg_image = MIMEImage(image_fp.read(), 'jpeg')  # FIXME: for now, we assume jpegs
-                image_fp.close()
-                msg_image.add_header('Content-ID', "<%s>" % im)
+                with open(im) as image_fp:
+                    msg_image = MIMEImage(image_fp.read(), 'jpeg')  # FIXME: for now, we assume jpegs
+                msg_image.add_header('Content-ID', f"<{im}>")
                 msg_alt.attach(msg_image)
 
         msg_root.attach(msg_alt)
