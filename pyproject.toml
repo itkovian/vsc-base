@@ -1,0 +1,23 @@
+[project]
+name = "vsc-base"
+version = "4.0.0"
+description = "VSC base utilities"
+authors = [
+    {name = "Andy Georges",email = "andy.georges@ugent.be"}
+]
+license = {text = "GPLv2"}
+readme = "README.md"
+requires-python = ">=3.9"
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.dependencies]
+
+[tool.poetry]
+
+packages = [
+    {include = "vsc", from="src"}
+]
