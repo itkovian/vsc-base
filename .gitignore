@@ -1,12 +1,6 @@
 *.py[co]
-*.swp
-*~
-
-# ok to ignore generated file in vsc-base
-setup.cfg
 
 # Packages
-.eggs*
 *.egg
 *.egg-info
 dist
@@ -17,9 +11,16 @@ var
 sdist
 develop-eggs
 .installed.cfg
+.eggs
+.eggs*
+buildroot
+wheelhouse
 
 # Installer logs
 pip-log.txt
+
+*~
+setup.cfg
 
 # Unit test / coverage reports
 .coverage
@@ -31,9 +32,10 @@ pip-log.txt
 #Mr Developer
 .mr.developer.cfg
 
-# Ninja
-*.nja
+# Vim
+.*.sw[op]
 
 html
 test-reports
-htmlcov/
+
+setup.cfg
