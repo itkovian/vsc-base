@@ -37,7 +37,7 @@ rpm: wrappers
 		fpm -s dir -t rpm \
 		    -n $(NAME) \
 		    -v $(VERSION) \
-		    --prefix=/ \
+		    --prefix=${PREFIX} \
 		    -C $(BUILDROOT) .
 
 clean:
