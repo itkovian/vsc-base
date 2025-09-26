@@ -4,7 +4,7 @@ VERSION := $(shell python -c "import tomllib;print(tomllib.load(open('pyproject.
 BINARIES := $(shell python -c "import tomllib;data=tomllib.load(open('pyproject.toml','rb'));print(' '.join(data['project']['scripts'].keys()))")
 
 PREFIX=/opt/$(NAME)
-VENV_DIR=$(PREFIX)/venv
+VENVDIR=$(PREFIX)/venv
 BUILDROOT=$(PWD)/buildroot
 WHEELHOUSE=$(PWD)/wheelhouse
 DISTNAME=$(subst -,_,$(NAME))
