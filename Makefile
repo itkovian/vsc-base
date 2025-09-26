@@ -1,7 +1,7 @@
 # Extract values from pyproject.toml
-NAME := $(shell python3 -c "import tomllib;print(tomllib.load(open('pyproject.toml','rb'))['project']['name'])")
-VERSION := $(shell python3 -c "import tomllib;print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
-BINARIES := $(shell python3 -c "import tomllib;data=tomllib.load(open('pyproject.toml','rb'));print(' '.join(data['project']['scripts'].keys()))")
+NAME := $(shell python -c "import tomllib;print(tomllib.load(open('pyproject.toml','rb'))['project']['name'])")
+VERSION := $(shell python -c "import tomllib;print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+BINARIES := $(shell python -c "import tomllib;data=tomllib.load(open('pyproject.toml','rb'));print(' '.join(data['project']['scripts'].keys()))")
 
 PREFIX=/opt/$(NAME)
 VENV_DIR=$(PREFIX)/venv
@@ -9,15 +9,15 @@ BUILDROOT=$(PWD)/buildroot
 WHEELHOUSE=$(PWD)/wheelhouse
 DISTNAME=$(subst -,_,$(NAME))
 
-all: wheelhouse install fix-shebangs wrappers rpm
+all: install fix-shebangs wrappers rpm
 
 wheelhouse:
-	uv pip compile pyproject.toml --output requirements.txt
+	uv pip compile pyproject.toml --output-file requirements.txt
 	uv pip install -r requirements.txt --wheel-dir $(WHEELHOUSE) --only-binary :all:
 
 install:
-	python3 -m venv $(BUILDROOT)$(VENVDIR)
-	$(BUILDROOT)$(VENVDIR)/bin/pip install --no-index --find-links=$(WHEELHOUSE) $(NAME)==$(VERSION)
+	uv venv $(BUILDROOT)$(VENVDIR)
+	uv pip install --python $(BUILDROOT)$(VENVDIR)/bin/python .
 
 fix-shebangs:
 	for f in $(BUILDROOT)$(VENVDIR)/bin/*; do \
