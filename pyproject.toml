@@ -26,3 +26,6 @@ packages = ["src/vsc"]
 
 [tool.uv-build]
 packages = ["src/vsc"]
+
+[tool.uv.sources]
+vsc-install = { git = "https://github.com/itkovian/vsc-install.git", branch = "uv-package-only"}
