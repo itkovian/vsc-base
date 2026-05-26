@@ -34,14 +34,13 @@ import os
 import time
 from vsc.install.testing import TestCase
 
-import vsc.utils.asyncprocess as p
-from vsc.utils.asyncprocess import Popen
+from vsc.utils.asyncprocess import Popen, recv_some, send_all
 
 
 def p_recv_some_exception(*args, **kwargs):
     """Call recv_some with raise exception enabled"""
     kwargs['e'] = True
-    return p.recv_some(*args, **kwargs)
+    return recv_some(*args, **kwargs)
 
 
 class AsyncProcessTest(TestCase):
@@ -55,15 +54,15 @@ class AsyncProcessTest(TestCase):
 
     def runTest(self):
         """ try echoing some text and see if it comes back out """
-        p.send_all(self.shell, "echo hello\n")
+        send_all(self.shell, "echo hello\n")
         time.sleep(0.1)
         self.assertEqual(p.recv_some(self.shell), b"hello\n")
 
-        p.send_all(self.shell, "echo hello world\n")
+        send_all(self.shell, "echo hello world\n")
         time.sleep(0.1)
         self.assertEqual(p.recv_some(self.shell), b"hello world\n")
 
-        p.send_all(self.shell, "exit\n")
+        send_all(self.shell, "exit\n")
         time.sleep(0.2)
         self.assertEqual(b"", p.recv_some(self.shell, e=False))
         self.assertRaises(Exception, p_recv_some_exception, self.shell)
