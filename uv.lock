@@ -1,0 +1,19 @@
+version = 1
+revision = 3
+requires-python = "==3.9.*"
+
+[[package]]
+name = "vsc-base"
+version = "4.0.0"
+source = { editable = "." }
+dependencies = [
+    { name = "vsc-install" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "vsc-install", git = "https://github.com/itkovian/vsc-install.git?branch=uv-package-only" }]
+
+[[package]]
+name = "vsc-install"
+version = "1.0.0"
+source = { git = "https://github.com/itkovian/vsc-install.git?branch=uv-package-only#32c13b1611f680052159ac0624f7c01564c1fe37" }
