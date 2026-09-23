@@ -28,7 +28,7 @@ Test module used by the unit tests
 
 @author: Kenneth Hoste (Ghent University)
 """
-from testmodule import TestModA, TestModA1
+from .testmodule import TestModA, TestModA1
 class TestModA3(TestModA):
     pass
 

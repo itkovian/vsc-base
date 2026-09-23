@@ -30,3 +30,19 @@ packages = ["src/vsc"]
 
 [tool.uv.sources]
 vsc-install = { git = "https://github.com/itkovian/vsc-install.git", branch = "uv-package-only"}
+
+[dependency-groups]
+dev = [
+  "tox",
+  "tox-uv",
+  "pytest>=7.0",
+  "pytest-cov",
+  "setuptools<54.0",
+  "prospector",
+  "tenacity",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["test"]
+python_files = ["*.py"]
+norecursedirs = ["test/runtests"]

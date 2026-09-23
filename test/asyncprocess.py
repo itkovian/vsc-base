@@ -34,6 +34,7 @@ import os
 import time
 from vsc.install.testing import TestCase
 
+import vsc.utils.asyncprocess as p
 from vsc.utils.asyncprocess import Popen, recv_some, send_all
 
 
