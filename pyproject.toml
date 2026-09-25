@@ -37,7 +37,6 @@ dev = [
   "tox-uv",
   "pytest>=7.0",
   "pytest-cov",
-  "setuptools<54.0",
   "prospector",
   "tenacity",
 ]
@@ -46,3 +45,5 @@ dev = [
 testpaths = ["test"]
 python_files = ["*.py"]
 norecursedirs = ["test/runtests"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]

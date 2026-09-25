@@ -450,15 +450,6 @@ wheels = [
 ]
 
 [[package]]
-name = "setuptools"
-version = "53.1.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/8f/6b/0dcf95d95086ce459152e4c0ac306f2dbbcf984177a2b8b77b320ebfbf22/setuptools-53.1.0.tar.gz", hash = "sha256:8181c4625cd58fa7817761e0fa60f6fa3adc4c437f5c25377b1aefa861ca15a2", size = 2051159, upload-time = "2021-02-25T14:44:10.165Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/4e/ca/0456249eead852a957d306feb0cce454b823cbc3bea7821971febfa45f99/setuptools-53.1.0-py3-none-any.whl", hash = "sha256:487f7a3e5040445b687f1eadcebcbbd11e83da95cad5e755304e38a3b7a93207", size = 784572, upload-time = "2021-02-25T14:44:08.698Z" },
-]
-
-[[package]]
 name = "snowballstemmer"
 version = "3.1.1"
 source = { registry = "https://pypi.org/simple" }
@@ -605,7 +596,6 @@ dev = [
     { name = "prospector" },
     { name = "pytest" },
     { name = "pytest-cov" },
-    { name = "setuptools" },
     { name = "tenacity" },
     { name = "tox" },
     { name = "tox-uv" },
@@ -619,7 +609,6 @@ dev = [
     { name = "prospector" },
     { name = "pytest", specifier = ">=7.0" },
     { name = "pytest-cov" },
-    { name = "setuptools", specifier = "<54.0" },
     { name = "tenacity" },
     { name = "tox" },
     { name = "tox-uv" },
